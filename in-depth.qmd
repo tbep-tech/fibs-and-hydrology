@@ -1,3 +1,9 @@
 # In-depth analyses  
 
 Whatever we need to do next will go here.  
+
+```{r}
+# just testing some code
+1 + 1
+```
+
