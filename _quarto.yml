@@ -1,0 +1,26 @@
+project:
+  type: book
+
+book:
+  title: "Fecal Indicator Bacteria and Hydrology"
+  author: "Kim Cressman, Catbird Stats"
+  date: today
+  chapters:
+    - index.qmd
+    - background.qmd
+    - data_sources.qmd
+    - how_to_approach.qmd
+    - in-depth.qmd
+    - summary.qmd
+    - references.qmd
+
+bibliography: references.bib
+
+format:
+  html:
+    theme: cosmo
+  pdf:
+    documentclass: scrreprt
+
+
+

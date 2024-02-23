@@ -1,0 +1,19 @@
+# Data Sources  
+
+## Fecal Indicator Bacteria  
+
+from `tbeptools::read_importwqp()` - provide details  
+
+## Hydrological Loads  
+
+from TBEP
+
+
+## Radar-estimated precipitation  
+
+downloaded from SWFWMD ftp site, link provided via water atlas  
+
+
+## WBIDs  
+
+downloaded shapefile from DEP; run 65  

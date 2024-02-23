@@ -1,0 +1,3 @@
+# Initial Exploration  
+
+We don't even really know the best way to even start looking at these relationships, so this portion will contain some exploratory visualizations.  
