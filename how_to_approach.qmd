@@ -1,3 +1,124 @@
 # Initial Exploration  
 
 We don't even really know the best way to even start looking at these relationships, so this portion will contain some exploratory visualizations.  
+
+So to start, I'm just going to pull out a few sites where I would expect to see some influence - sites that aren't in the bays, but are maybe around the edges. I'll hand-pick and hard-code, to figure out what this all even looks like, then figure out how to scale up.  
+
+We have both precipitation data and hydrologic load data.  
+
+
+```{r}
+library(mapview)
+library(sf)
+library(tidyverse)
+```
+
+```{r}
+swfwmdpixels <- read_sf(here::here("GIS", "swfwmd_pixel_2_utm_m_83.shp"))
+bay_segs <- read_sf(here::here("GIS", "TBEP-Bay_Segments.shp")) |> 
+    st_transform(crs = st_crs(swfwmdpixels))
+
+precip_pixels <- st_intersection(swfwmdpixels, bay_segs)
+
+
+# pixels to pull rainfall from,
+# and their associated bay segments
+# (for group-wise averaging)  
+pixs <- precip_pixels |> 
+    st_drop_geometry() |> 
+    select(PIXEL, BAY_SEG)
+
+
+# read in compiled rainfall (see R/rainfall_preprocessing.R)
+prcp <- readRDS(here::here("SWFWMD-rainfall-data", "compiledRainfall.rds"))
+prcp2 <- prcp |> 
+    filter(PIXEL %in% unique(pixs$PIXEL))
+# okaaaay, guess I managed to only pull Tampa Bay data anyway. Good check though.  
+rm(prcp2)
+```
+
+Really only going to want the pixels that are in the watersheds.  
+
+
+Which precip to look at? Total for watershed? total within X kilometers of a station? (and what should X be?) Maybe one task is to figure out what's best. Could vary by watershed too though - Hillsborough Bay's is way bigger than Middle Tampa Bay's.... maybe a bigger time lag in situations like that (but still, if we're only looking at monthly....)
+
+
+```{r}
+# pull a few months and map both by pixel, 
+# and averaged up to bay segment
+# make sure it works  
+
+# there are some pixels along bay segment boundaries
+# I set this to be a full join so that the precip from
+# those pixels goes into each bay segment average
+# that they're part of
+
+prcp <- prcp |> 
+    full_join(pixs, by = "PIXEL",
+              relationship = "many-to-many")
+
+prcp_bayseg <- prcp |> 
+    summarize(.by = c(BAY_SEG, month, year),
+              inches = mean(inches, na.rm = TRUE)) |> 
+    filter(year == 2022) |> 
+    left_join(bay_segs) |> 
+    st_as_sf()
+
+prcp_pixel <- prcp |> 
+    select(-BAY_SEG) |> 
+    distinct() |> 
+    filter(year == 2022) |> 
+    left_join(select(precip_pixels, PIXEL, geometry)) |> 
+    st_as_sf()
+```
+
+```{r}
+prcp_bayseg |> 
+    filter(month == 1) |> 
+    mapview(zcol = "inches",
+            layer.name = "Jan 2022")
+
+prcp_pixel |> 
+    filter(month == 1) |> 
+    mapview(zcol = "inches",
+            layer.name = "Jan 2022")
+```
+
+```{r}
+library(tmap)
+```
+
+```{r}
+tm_shape(prcp_bayseg) +
+    tm_borders() +
+    tm_fill("inches",
+            n = 6,
+            palette = "YlGnBu") +
+    tm_facets(by = "month", nrow = 4)
+
+tm_shape(prcp_pixel) +
+    tm_fill("inches",
+            n = 6,
+            palette = "YlGnBu") +
+    tm_facets(by = "month", nrow = 4)
+
+```
+
+Variations throughout a year are so large that my worry about averaging up to bay segment being too rough is.... not really relevant after all. Should be fine.  
+
+```{r}
+prcp_bayseg <- prcp |> 
+    summarize(.by = c(BAY_SEG, month, year),
+              inches = mean(inches, na.rm = TRUE)) |> 
+    filter(year >= 2018) |> 
+    left_join(bay_segs) |> 
+    st_as_sf()
+
+tm_shape(prcp_bayseg) +
+    tm_borders() +
+    tm_fill("inches",
+            palette = "YlGnBu",
+            n = 10) +
+    tm_facets(by = c("month", "year"))
+```
+
