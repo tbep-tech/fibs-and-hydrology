@@ -11,13 +11,29 @@ We have both precipitation data and hydrologic load data.
 library(mapview)
 library(sf)
 library(tidyverse)
+library(tmap)
+library(tbeptools)
 ```
+
+## Data Import  
+
+Read in shapefiles and other data files here.  
 
 ```{r}
 swfwmdpixels <- read_sf(here::here("GIS", "swfwmd_pixel_2_utm_m_83.shp"))
 bay_segs <- read_sf(here::here("GIS", "TBEP-Bay_Segments.shp")) |> 
     st_transform(crs = st_crs(swfwmdpixels))
 
+hydro <- readxl::read_xlsx(here::here("hydro-load-data",
+                                      "monthly-hydrology.xlsx"))
+
+hydro_sub <- hydro |> 
+    dplyr::filter(year >= 2009)
+```
+
+Subset pixel file, merge datasets that need merging, turn into spatial objects.  
+
+```{r}
 precip_pixels <- st_intersection(swfwmdpixels, bay_segs)
 
 
@@ -36,8 +52,6 @@ prcp2 <- prcp |>
 # okaaaay, guess I managed to only pull Tampa Bay data anyway. Good check though.  
 rm(prcp2)
 ```
-
-Really only going to want the pixels that are in the watersheds.  
 
 
 Which precip to look at? Total for watershed? total within X kilometers of a station? (and what should X be?) Maybe one task is to figure out what's best. Could vary by watershed too though - Hillsborough Bay's is way bigger than Middle Tampa Bay's.... maybe a bigger time lag in situations like that (but still, if we're only looking at monthly....)
@@ -72,6 +86,8 @@ prcp_pixel <- prcp |>
     st_as_sf()
 ```
 
+## Precip maps, comparing pixel-level to bay-segment-level  
+
 ```{r}
 prcp_bayseg |> 
     filter(month == 1) |> 
@@ -84,9 +100,6 @@ prcp_pixel |>
             layer.name = "Jan 2022")
 ```
 
-```{r}
-library(tmap)
-```
 
 ```{r}
 tm_shape(prcp_bayseg) +
@@ -110,7 +123,7 @@ Variations throughout a year are so large that my worry about averaging up to ba
 prcp_bayseg <- prcp |> 
     summarize(.by = c(BAY_SEG, month, year),
               inches = mean(inches, na.rm = TRUE)) |> 
-    filter(year >= 2018) |> 
+    filter(year == 2022) |> 
     left_join(bay_segs) |> 
     st_as_sf()
 
@@ -120,5 +133,177 @@ tm_shape(prcp_bayseg) +
             palette = "YlGnBu",
             n = 10) +
     tm_facets(by = c("month", "year"))
+```
+
+Bay segment level should be fine.  
+
+
+## Precip and hydrologic loads  
+
+I'd expect these to correlate pretty well. Wonder if that changes by month and/or wet vs. dry season. Check that out here.  
+
+Subset to only the specific bay segments in both datasets (am unsure whether to average precip across different bay segments, which may be different sizes..... probably should do that at the pixel-to-bay-seg level if I want to)  
+
+```{r}
+combnd <- prcp |> 
+    summarize(.by = c(BAY_SEG, month, year),
+              inches = mean(inches, na.rm = TRUE)) |> 
+    filter(year >= 2009,
+           BAY_SEG %in% unique(hydro$bay_segment)) |>
+    left_join(hydro, by = c("BAY_SEG" = "bay_segment", "year", "month")) |> 
+    rename(bay_segment = BAY_SEG,
+           hydro_load = hy_load_106_m3_mo)
+```
+
+May have log-log relationships, or non-linear relationships, or need to look at it some different way. Let's see.  
+
+```{r}
+p <- ggplot(combnd) +
+    geom_point(aes(x = inches, y = hydro_load,
+                   col = bay_segment))
+
+p
+```
+
+Generally positive relationship (as you'd expect) but lots of spread, especially at higher precipitation levels.  
+
+Looks like a lot of that variability is due to the different bay segments.  
+
+```{r}
+p +
+    facet_wrap(~bay_segment)
+```
+
+Hillsborough Bay has a lot of variability - not surprising since it's the biggest of the watersheds.  Looks like the relationships hold until about 12 inches, then higher points are both infrequent and possibly show some leveling off.  This includes ~15 years of data (2009 and later) and looks almost exactly the same as when I used only 2016 and above.    
+
+```{r}
+ggplot(combnd) +
+    geom_point(aes(x = inches, y = hydro_load,
+                   col = factor(month))) +
+    scale_color_brewer(palette = "Paired") +
+    facet_wrap(~bay_segment)
+```
+
+Makes sense that the relationship would vary by bay segment/watershed size. In Hillsborough Bay, we sort of see Aug-October on the high side of the hydrologic loads, even for the same amount of precipitation as in (e.g.) April.    
+
+```{r}
+ggplot(combnd) +
+    geom_point(aes(x = inches, y = hydro_load,
+                   col = bay_segment)) +
+    scale_color_brewer(palette = "Set1") +
+    facet_wrap(~month)
+```
+
+Varies a lot by month and bay segment, especially in September.  
+
+```{r}
+ggplot(combnd) +
+    geom_boxplot(aes(x = factor(month), y = inches,
+                    col = bay_segment)) +
+    scale_color_brewer(palette = "Set1") +
+    labs(title = "Precip variability by month x bay segment",
+         x = "Month",
+         y = "Monthly Total Precipitation (inches)")
+
+ggplot(combnd) +
+    geom_boxplot(aes(x = factor(month), y = hydro_load,
+                    col = bay_segment)) +
+    scale_color_brewer(palette = "Set1") +
+    labs(title = "Hydro load variability by month x bay segment",
+         x = "Month",
+         y = "Monthly hydrologic load (10^6 m3)")
+```
+
+Precip is similar between watersheds; hydrologic load is highest in Hillsborough Bay and lowest in lower Tampa Bay. Middle and Old Tampa Bay are pretty comparable.  
+
+# Hydrologic Loads and Enterococcus  
+
+
+```{r}
+fib_dat <- readRDS(here::here("fib-data", "tbeptools_importwqp.rds"))
+
+fib_sub <- fib_dat |> 
+    filter(yr >= 2009,
+           class == "Estuary",
+           var == "ecocci")
+
+# get those attached to bay segments  
+fib_baysegs <- fib_sub |> 
+    st_as_sf(coords = c("Longitude", "Latitude"),
+             crs = "WGS84",
+             remove = FALSE) |>    # WGS84 is default for handheld GPS units
+    st_transform(crs = st_crs(swfwmdpixels)) |> 
+    st_intersection(bay_segs) |> 
+    mutate(bay_segment = case_match(BAY_SEG,
+                                    "Boca Ciega Bay" ~ "Remainder Lower Tampa Bay",
+                                    "Manatee River" ~ "Remainder Lower Tampa Bay",
+                                    .default = BAY_SEG))
+
+fib_hydro <- left_join(fib_baysegs, hydro_sub,
+                       by = c("yr" = "year",
+                              "mo" = "month",
+                              "bay_segment")) |> 
+    rename(hydro_load = hy_load_106_m3_mo)
+```
+
+## Entero by monthly hydro load  
+
+```{r}
+ggplot(fib_hydro, aes(x = hydro_load,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. hydrologic load; log-log scale",
+         x = "Hydrologic Load",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+Interesting..... it's not necessarily the monthly hydrologic loads that matter (though it's clear that the higher hydrologic loads occur in certain months). Could come down to precipitation in some previous time periods.  
+
+Could also be that because the majority of stations are in the bay proper, they're diluted and that's driving the lack-of-relationship. Really need to break this all out by "in-bay" vs. "have some land near the station".  
+
+First a little more exploration of entero concentrations by time of year.  
+
+## Entero by month  
+
+```{r}
+ggplot(fib_hydro,
+       aes(x = factor(mo),
+           y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+                size = 0.7,
+                alpha = 0.4) +
+    geom_boxplot(alpha = 0) +
+    scale_y_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero counts by month",
+         x = "Month",
+         y = "Enterococcus") +
+    theme(legend.position = "none")
+```
+
+## Hydro load by month  
+
+```{r}
+ggplot(hydro_sub,
+       aes(x = factor(month),
+           y = hy_load_106_m3_mo)) +
+    geom_jitter(aes(col = factor(month)),
+                size = 0.7,
+                alpha = 0.6) +
+    geom_boxplot(alpha = 0) +
+    scale_y_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Hydrologic Load by month",
+         x = "Month",
+         y = "Hydrologic Load") +
+    theme(legend.position = "none")
 ```
 

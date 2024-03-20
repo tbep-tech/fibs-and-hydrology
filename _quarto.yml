@@ -1,6 +1,6 @@
 project:
   type: book
-  output-dir: _book
+  output-dir: docs
   resources:
     - /.nojekyll
 
@@ -28,6 +28,10 @@ format:
     code-fold: true
   pdf:
     documentclass: scrreprt
+    
+warning: false
+message: false
+error: true
 
 
 
