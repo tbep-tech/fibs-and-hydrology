@@ -146,13 +146,17 @@ Subset to only the specific bay segments in both datasets (am unsure whether to 
 
 ```{r}
 combnd <- prcp |> 
-    summarize(.by = c(BAY_SEG, month, year),
+    mutate(bay_segment = case_match(BAY_SEG,
+                                    "Boca Ciega Bay" ~ "Remainder Lower Tampa Bay",
+                                    "Manatee River" ~ "Remainder Lower Tampa Bay",
+                                    "Terra Ceia Bay" ~ "Remainder Lower Tampa Bay",
+                                    .default = BAY_SEG)) |> 
+    summarize(.by = c(bay_segment, month, year),
               inches = mean(inches, na.rm = TRUE)) |> 
     filter(year >= 2009,
-           BAY_SEG %in% unique(hydro$bay_segment)) |>
-    left_join(hydro, by = c("BAY_SEG" = "bay_segment", "year", "month")) |> 
-    rename(bay_segment = BAY_SEG,
-           hydro_load = hy_load_106_m3_mo)
+           bay_segment %in% unique(hydro$bay_segment)) |>
+    left_join(hydro, by = c("bay_segment", "year", "month")) |> 
+    rename(hydro_load = hy_load_106_m3_mo)
 ```
 
 May have log-log relationships, or non-linear relationships, or need to look at it some different way. Let's see.  
@@ -239,11 +243,10 @@ fib_baysegs <- fib_sub |>
                                     "Manatee River" ~ "Remainder Lower Tampa Bay",
                                     .default = BAY_SEG))
 
-fib_hydro <- left_join(fib_baysegs, hydro_sub,
+fib_hydro <- left_join(fib_baysegs, combnd,
                        by = c("yr" = "year",
                               "mo" = "month",
-                              "bay_segment")) |> 
-    rename(hydro_load = hy_load_106_m3_mo)
+                              "bay_segment"))
 ```
 
 ## Entero by monthly hydro load  
@@ -270,6 +273,28 @@ Interesting..... it's not necessarily the monthly hydrologic loads that matter (
 Could also be that because the majority of stations are in the bay proper, they're diluted and that's driving the lack-of-relationship. Really need to break this all out by "in-bay" vs. "have some land near the station".  
 
 First a little more exploration of entero concentrations by time of year.  
+
+## Entero by monthly precip  
+
+```{r}
+ggplot(fib_hydro, aes(x = inches,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.3) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. Monthly Precip",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+
+We see it a bit more with precip rather than hydrologic load, at least in the higher values.  
 
 ## Entero by month  
 
@@ -305,5 +330,212 @@ ggplot(hydro_sub,
          x = "Month",
          y = "Hydrologic Load") +
     theme(legend.position = "none")
+```
+
+
+## Precip by month  
+
+
+
+# Inside bay vs. not  
+
+```{r}
+tbseg2 <- tbseg |> 
+    st_transform(crs = st_crs(swfwmdpixels))
+
+fib_nonbay <- st_filter(fib_hydro, st_union(tbseg2), .predicate = st_disjoint)
+```
+
+Note, this isn't good spatial coverage - may want to think about including freshwater sites too (eek).  
+
+```{r}
+mapview(fib_nonbay)
+```
+
+## Entero by month  
+
+```{r}
+ggplot(fib_nonbay,
+       aes(x = factor(mo),
+           y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+                size = 0.7,
+                alpha = 0.4) +
+    geom_boxplot(alpha = 0) +
+    scale_y_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero counts by month",
+         subtitle = "stations that are not in the bay proper",
+         x = "Month",
+         y = "Enterococcus") +
+    theme(legend.position = "none")
+```
+
+Still really not any cycling.... surprising. Maybe a little in Hillsborough Bay.  
+
+## Entero by monthly hydro load  
+
+```{r}
+ggplot(fib_nonbay, aes(x = hydro_load,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. hydrologic load",
+         subtitle = "stations that are not in the bay proper",
+         x = "Hydrologic Load",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = hydro_load,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    # facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. hydrologic load; log-log scale",
+         subtitle = "stations that are not in the bay proper",
+         x = "Hydrologic Load",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+
+## Entero and precip  
+
+```{r}
+ggplot(fib_nonbay, aes(x = inches,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    # facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. precip",
+         subtitle = "stations that are not in the bay proper",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = inches,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. precip",
+         subtitle = "stations that are not in the bay proper",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+
+ggplot(fib_nonbay, aes(x = inches,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. precip; log-log scale",
+         subtitle = "stations that are not in the bay proper",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+Changing the x-axis between log and 'regular' really changes how it looks.  
+
+
+# A few individual sites  
+
+OrgID 21FLHILL_WQX
+Stations 22, 136, 036, 054
+
+
+
+```{r}
+fib_tiny <- fib_hydro |> 
+    dplyr::filter(OrgID == "21FLHILL_WQX",
+           Station %in% c("22", "136", "036", "054"))
+mapview(fib_tiny)
+```
+
+## Time Series  
+
+```{r}
+fib_long <- fib_tiny |> 
+    mutate(Date = lubridate::ymd(paste(yr, mo, "01"))) |> 
+    rename(Entero = val) |> 
+    select(OrgID, Station, Date, Entero, bay_segment, inches, hydro_load, geometry) |> 
+    pivot_longer(c(Entero, inches, hydro_load),
+                 names_to = "variable",
+                 values_to = "value")
+```
+
+```{r}
+ggplot(fib_long, aes(x = Date, y = value, col = Station)) +
+    geom_point() +
+    geom_line() +
+    scale_y_log10() +
+    facet_wrap(~variable, scales = "free_y",
+               ncol = 1)
+```
+
+Well well well, we have at least one disappearing station, and it's one where enterococcus was generally high.  
+
+```{r}
+ggplot(fib_tiny, aes(x = inches, y = val, col = Station, group = Station)) +
+    geom_point(size = 2, alpha = 0.7) +
+    scale_y_log10() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(x = "Precip",
+         y = "Entero")
+```
+
+And really it looks like values within a station are sort of within their own range, different than other stations, as opposed to really correlating with precip (at least these few stations, on this graph).  Maybe a bit of a relationship if we force it to linear rather than loess.  
+
+```{r}
+ggplot(fib_tiny, aes(x = hydro_load, y = val, col = Station, group = Station)) +
+    geom_point(size = 2, alpha = 0.7) +
+    scale_y_log10() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(x = "Hydro load",
+         y = "Entero")
+```
+
+
+# experimentation  
+
+```{r}
+fib_tiny <- fib_hydro[c(1, 100, 400, 600, 2000, 5000, 8000, 10000), ]
+mapview(fib_tiny)
+
+nearBorder <- rowSums(st_is_within_distance(fib_tiny, tbseg2, dist = 10, sparse = FALSE))
+
+fib_within_x <- fib_tiny[nearBorder > 0, ]
+mapview(fib_within100) + mapview(tbseg2)
 ```
 
