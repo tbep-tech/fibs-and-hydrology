@@ -4,7 +4,9 @@ We don't even really know the best way to even start looking at these relationsh
 
 So to start, I'm just going to pull out a few sites where I would expect to see some influence - sites that aren't in the bays, but are maybe around the edges. I'll hand-pick and hard-code, to figure out what this all even looks like, then figure out how to scale up.  
 
-We have both precipitation data and hydrologic load data.  
+We have monthly precipitation data and hydrologic load data.  
+
+
 
 
 ```{r}
@@ -26,6 +28,12 @@ bay_segs <- read_sf(here::here("GIS", "TBEP-Bay_Segments.shp")) |>
 
 hydro <- readxl::read_xlsx(here::here("hydro-load-data",
                                       "monthly-hydrology.xlsx"))
+
+hydro <- hydro |> 
+    rename(hydro_load = hy_load_106_m3_mo) |>
+    group_by(bay_segment) |> 
+    mutate(lag1_hydro = lag(hydro_load)) |> 
+    ungroup()
 
 hydro_sub <- hydro |> 
     dplyr::filter(year >= 2009)
@@ -69,7 +77,10 @@ Which precip to look at? Total for watershed? total within X kilometers of a sta
 
 prcp <- prcp |> 
     full_join(pixs, by = "PIXEL",
-              relationship = "many-to-many")
+              relationship = "many-to-many") |> 
+    group_by(PIXEL) |> 
+    mutate(prcp_lag1 = lag(inches)) |> 
+    ungroup()
 
 prcp_bayseg <- prcp |> 
     summarize(.by = c(BAY_SEG, month, year),
@@ -153,10 +164,12 @@ combnd <- prcp |>
                                     .default = BAY_SEG)) |> 
     summarize(.by = c(bay_segment, month, year),
               inches = mean(inches, na.rm = TRUE)) |> 
+    group_by(bay_segment) |> 
+    mutate(lag1_prcp = lag(inches)) |> 
+    ungroup() |> 
     filter(year >= 2009,
            bay_segment %in% unique(hydro$bay_segment)) |>
-    left_join(hydro, by = c("bay_segment", "year", "month")) |> 
-    rename(hydro_load = hy_load_106_m3_mo)
+    left_join(hydro, by = c("bay_segment", "year", "month"))
 ```
 
 May have log-log relationships, or non-linear relationships, or need to look at it some different way. Let's see.  
@@ -179,6 +192,22 @@ p +
 ```
 
 Hillsborough Bay has a lot of variability - not surprising since it's the biggest of the watersheds.  Looks like the relationships hold until about 12 inches, then higher points are both infrequent and possibly show some leveling off.  This includes ~15 years of data (2009 and later) and looks almost exactly the same as when I used only 2016 and above.    
+
+
+Quick look at hydrologic load and the previous month's precip:  
+
+```{r}
+ggplot(combnd) +
+    geom_point(aes(x = lag1_prcp, y = hydro_load,
+                   col = bay_segment)) +
+    facet_wrap(~bay_segment) +
+    theme(legend.position = "none") +
+    labs(x = "previous month's precipitation (inches)",
+         y = "hydrologic load")
+```
+
+Looks pretty similar, though with more variation; not entirely unexpected at this aggregation level.  
+
 
 ```{r}
 ggplot(combnd) +
@@ -272,6 +301,27 @@ Interesting..... it's not necessarily the monthly hydrologic loads that matter (
 
 Could also be that because the majority of stations are in the bay proper, they're diluted and that's driving the lack-of-relationship. Really need to break this all out by "in-bay" vs. "have some land near the station".  
 
+### Lagged hydro load  
+
+```{r}
+ggplot(fib_hydro, aes(x = lag1_hydro,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. lagged hydrologic load; log-log scale",
+         x = "Hydrologic Load in previous month",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+Nothing new.  
+
 First a little more exploration of entero concentrations by time of year.  
 
 ## Entero by monthly precip  
@@ -296,6 +346,30 @@ ggplot(fib_hydro, aes(x = inches,
 
 We see it a bit more with precip rather than hydrologic load, at least in the higher values.  
 
+
+### Previous month's precip  
+
+
+```{r}
+ggplot(fib_hydro, aes(x = lag1_prcp,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.3) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. Lagged Precip",
+         x = "Precipitation (in) in previous month",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+Yeah, not that different.  
+
+
 ## Entero by month  
 
 ```{r}
@@ -319,7 +393,7 @@ ggplot(fib_hydro,
 ```{r}
 ggplot(hydro_sub,
        aes(x = factor(month),
-           y = hy_load_106_m3_mo)) +
+           y = hydro_load)) +
     geom_jitter(aes(col = factor(month)),
                 size = 0.7,
                 alpha = 0.6) +
@@ -335,6 +409,21 @@ ggplot(hydro_sub,
 
 ## Precip by month  
 
+```{r}
+ggplot(combnd,
+       aes(x = factor(month),
+           y = inches)) +
+    geom_jitter(aes(col = factor(month)),
+                size = 0.7,
+                alpha = 0.6) +
+    geom_boxplot(alpha = 0) +
+    scale_y_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Precip by month",
+         x = "Month",
+         y = "Monthly Precipitation (inches)") +
+    theme(legend.position = "none")
+```
 
 
 # Inside bay vs. not  
@@ -468,6 +557,60 @@ ggplot(fib_nonbay, aes(x = inches,
 
 Changing the x-axis between log and 'regular' really changes how it looks.  
 
+### Lagged precip  
+
+```{r}
+ggplot(fib_nonbay, aes(x = lag1_prcp,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    # facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. lagged precip",
+         subtitle = "stations that are not in the bay proper",
+         x = "Previous Month's Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = lag1_prcp,
+                      y = val)) +
+    geom_jitter(aes(col = as.factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. lagged precip",
+         subtitle = "stations that are not in the bay proper",
+         x = "Previous Month's Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+
+ggplot(fib_nonbay, aes(x = lag1_prcp,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. lagged precip; log-log scale",
+         subtitle = "stations that are not in the bay proper",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
 
 # A few individual sites  
 
@@ -489,8 +632,8 @@ mapview(fib_tiny)
 fib_long <- fib_tiny |> 
     mutate(Date = lubridate::ymd(paste(yr, mo, "01"))) |> 
     rename(Entero = val) |> 
-    select(OrgID, Station, Date, Entero, bay_segment, inches, hydro_load, geometry) |> 
-    pivot_longer(c(Entero, inches, hydro_load),
+    select(OrgID, Station, Date, Entero, bay_segment, inches, hydro_load, lag1_prcp, lag1_hydro, geometry) |> 
+    pivot_longer(c(Entero, inches, hydro_load, lag1_prcp, lag1_hydro),
                  names_to = "variable",
                  values_to = "value")
 ```
@@ -518,6 +661,18 @@ ggplot(fib_tiny, aes(x = inches, y = val, col = Station, group = Station)) +
 And really it looks like values within a station are sort of within their own range, different than other stations, as opposed to really correlating with precip (at least these few stations, on this graph).  Maybe a bit of a relationship if we force it to linear rather than loess.  
 
 ```{r}
+ggplot(fib_tiny, aes(x = lag1_prcp, y = val, col = Station, group = Station)) +
+    geom_point(size = 2, alpha = 0.7) +
+    scale_y_log10() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(x = "Lagged Precip",
+         y = "Entero")
+```
+
+A little different, but not much.  
+
+
+```{r}
 ggplot(fib_tiny, aes(x = hydro_load, y = val, col = Station, group = Station)) +
     geom_point(size = 2, alpha = 0.7) +
     scale_y_log10() +
@@ -530,6 +685,8 @@ ggplot(fib_tiny, aes(x = hydro_load, y = val, col = Station, group = Station)) +
 # experimentation  
 
 ```{r}
+#| eval: false
+
 fib_tiny <- fib_hydro[c(1, 100, 400, 600, 2000, 5000, 8000, 10000), ]
 mapview(fib_tiny)
 
