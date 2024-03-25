@@ -18,11 +18,17 @@ tbgrdcent <- grd %>%
   .[tbshed, ]    # tbshed is WGS 84, in tbeptools
 
 # unzip folders
+## monthly
 loc <- here('SWFWMD-rainfall-data')
 files <- list.files(loc, pattern = '.zip', full.names = T, recursive = T)
 lapply(files, unzip, exdir = loc)
+## daily
+locd <- here('SWFWMD-rainfall-data', 'Daily_Data')
+filesd <- list.files(locd, pattern = '.zip', full.names = T, recursive = T)
+lapply(filesd, unzip, exdir = locd)
 
 # read text files
+## monthly
 raindat <- list.files(loc, pattern = '19.*\\.txt$|20.*\\.txt$', full.names = T) %>%
   lapply(read.table, sep = ',', header = F) %>%
   do.call('rbind', .) %>%
@@ -35,3 +41,20 @@ raindat <- list.files(loc, pattern = '19.*\\.txt$|20.*\\.txt$', full.names = T) 
   filter(PIXEL %in% tbgrdcent$PIXEL)
 
 saveRDS(raindat, file = here(loc, "compiledRainfall.rds"))
+
+
+## daily
+raindatd <- list.files(locd, pattern = '19.*\\.txt$|20.*\\.txt$', full.names = T) %>%
+    lapply(read.table, sep = ',', header = F) %>%
+    do.call('rbind', .) %>%
+    rename(
+        'PIXEL' = V1,
+        'date' = V2,
+        'inches' = V3
+    ) %>%
+    filter(PIXEL %in% tbgrdcent$PIXEL)
+
+raindatd <- raindatd |> 
+    mutate(date = lubridate::mdy(date))
+
+saveRDS(raindatd, file = here(locd, "compiledDailyRainfall.rds"))
