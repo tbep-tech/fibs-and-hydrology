@@ -15,6 +15,8 @@ library(sf)
 library(tidyverse)
 library(tmap)
 library(tbeptools)
+library(khroma)
+library(corrplot)
 ```
 
 ## Data Import  
@@ -59,6 +61,8 @@ prcp2 <- prcp |>
     filter(PIXEL %in% unique(pixs$PIXEL))
 # okaaaay, guess I managed to only pull Tampa Bay data anyway. Good check though.  
 rm(prcp2)
+
+daily_prcp <- readRDS(here::here("SWFWMD-rainfall-data", "Daily_Data", "compiledDailyRainfall.rds"))
 ```
 
 
@@ -82,12 +86,34 @@ prcp <- prcp |>
     mutate(prcp_lag1 = lag(inches)) |> 
     ungroup()
 
+daily_prcp <- daily_prcp |> 
+    full_join(pixs, by = "PIXEL",
+              relationship = "many-to-many") |> 
+    group_by(PIXEL) |> 
+    mutate(daily_lag1 = lag(inches, 1),
+           daily_lag2 = lag(inches, 2),
+           daily_lag3 = lag(inches, 3),
+           daily_lag4 = lag(inches, 4),
+           daily_lag5 = lag(inches, 5),
+           daily_lag6 = lag(inches, 6),
+           daily_24hrs = inches + daily_lag1,
+           daily_48hrs = inches + daily_lag1 + daily_lag2,
+           daily_7d = inches + daily_lag1 + daily_lag2 + daily_lag3 + daily_lag4 + daily_lag5 + daily_lag6) |> 
+    ungroup() |> 
+    select(PIXEL, date, inches, BAY_SEG, 
+           daily_24hrs, daily_48hrs, daily_7d)
+
 prcp_bayseg <- prcp |> 
     summarize(.by = c(BAY_SEG, month, year),
               inches = mean(inches, na.rm = TRUE)) |> 
     filter(year == 2022) |> 
     left_join(bay_segs) |> 
     st_as_sf()
+
+prcp_daily_bayseg <- daily_prcp |> 
+    summarize(.by = c(BAY_SEG, date),
+              across(c(inches, daily_24hrs, daily_48hrs, daily_7d),
+                     function(x) mean(x, na.rm = TRUE)))
 
 prcp_pixel <- prcp |> 
     select(-BAY_SEG) |> 
@@ -276,7 +302,18 @@ fib_hydro <- left_join(fib_baysegs, combnd,
                        by = c("yr" = "year",
                               "mo" = "month",
                               "bay_segment"))
+
 ```
+
+### Attach daily precipitation  
+
+```{r}
+fib_daily_prcp <- fib_baysegs |> 
+    mutate(date = as.Date(SampleTime)) |> 
+    left_join(prcp_daily_bayseg,
+              by = c("date", "BAY_SEG"))
+```
+
 
 ## Entero by monthly hydro load  
 
@@ -694,5 +731,180 @@ nearBorder <- rowSums(st_is_within_distance(fib_tiny, tbseg2, dist = 10, sparse 
 
 fib_within_x <- fib_tiny[nearBorder > 0, ]
 mapview(fib_within100) + mapview(tbseg2)
+```
+
+
+# Daily-level precipitation  
+
+Incorporate day-of-sampling, day + day before (24 hrs), day + 2 days before (48 hrs), and day + week before (7-day)  
+
+Working with `fib_daily_prcp` data frame.  
+
+```{r}
+fib_daily_nonbay <- st_filter(fib_daily_prcp, st_union(tbseg2), .predicate = st_disjoint)
+
+fib_daily_long <- fib_daily_prcp |> 
+    pivot_longer(inches:daily_7d,
+                 names_to = "time_period",
+                 values_to = "total") |> 
+    mutate(time_period = case_match(time_period,
+                                    "inches" ~ "day of sample",
+                                    "daily_24hrs" ~ "sample + previous day",
+                                    "daily_48hrs" ~ "sample + 2 days",
+                                    "daily_7d" ~ "previous week"))
+fib_daily_long_nonbay <- fib_daily_long |> 
+    filter(Station %in% fib_daily_nonbay$Station)
+```
+
+```{r}
+ggplot(fib_daily_long, aes(x = total, y = val)) +
+    geom_point(aes(col = time_period),
+               alpha = 0.4) +
+    facet_wrap(~BAY_SEG) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_okabeito() +
+    labs(title = "All stations",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus",
+         col = "time period of precip total")
+```
+
+```{r}
+ggplot(fib_daily_long, aes(x = total, y = val)) +
+    geom_point(aes(col = BAY_SEG),
+               alpha = 0.4) +
+    facet_wrap(~time_period) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_okabeito() +
+    labs(title = "All stations",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus",
+         col = "Bay Segment")
+```
+
+```{r}
+ggplot(fib_daily_long_nonbay, aes(x = total, y = val)) +
+    geom_point(aes(col = time_period),
+               alpha = 0.4) +
+    facet_wrap(~BAY_SEG) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_okabeito() +
+    labs(title = "Non-bay stations",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus",
+         col = "time period of precip total")
+```
+
+```{r}
+ggplot(fib_daily_long_nonbay, aes(x = total, y = val)) +
+    geom_point(aes(col = BAY_SEG),
+               alpha = 0.4) +
+    facet_wrap(~time_period) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_okabeito() +
+    labs(title = "Non-bay stations",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus",
+         col = "Bay Segment")
+```
+
+### Calculate correlations  
+
+Spearman correlations  
+
+#### All stations, all bay segments combined  
+
+```{r}
+all_stns <- fib_daily_prcp |> 
+    st_drop_geometry() |> 
+    select(val, inches:daily_7d) |> 
+    set_names(c("Entero", "sample_day_precip",
+                "sample_and_24hrs",
+                "sample_and_48hrs",
+                "previous_week"))
+```
+
+```{r}
+corr_all <- cor(all_stns,
+    use = "pairwise.complete.obs",
+    method = "spearman")
+
+knitr::kable(corr_all,
+             caption = "Spearman correlation coefficients",
+             digits = 3)
+knitr::kable(cor.mtest(corr_all)$p,
+             caption = "p-values of Spearman correlations",
+             digits = 3)
+
+```
+
+
+#### Non-bay stations, all bay segments combined  
+
+```{r}
+nonbay_stns <- fib_daily_nonbay |> 
+    st_drop_geometry() |> 
+    select(val, inches:daily_7d) |> 
+    set_names(c("Entero", "sample_day_precip",
+                "sample_and_24hrs",
+                "sample_and_48hrs",
+                "previous_week"))
+```
+
+```{r}
+corr_all <- cor(nonbay_stns,
+    use = "pairwise.complete.obs",
+    method = "spearman")
+
+knitr::kable(corr_all,
+             caption = "Spearman correlation coefficients",
+             digits = 3)
+knitr::kable(cor.mtest(corr_all)$p,
+             caption = "p-values of Spearman correlations",
+             digits = 3)
+```
+
+#### Non-bay stations, by bay segment  
+
+```{r}
+options(scipen = 999)
+
+my_cor <- function(df, x){
+    cor(df[["val"]], df[[x]],
+        method = "spearman",
+        use = "pairwise.complete.obs")
+}
+
+my_cor.p <- function(df, x){
+    cor.test(df[["val"]], df[[x]],
+        method = "spearman",
+        use = "pairwise.complete.obs")$p.value
+}
+
+nonbay_stns2 <- fib_daily_nonbay |> 
+    st_drop_geometry() |> 
+    filter(BAY_SEG != "Manatee River") |> # no values, messign things up
+    select(BAY_SEG, val, inches:daily_7d) |> 
+    summarize(.by = BAY_SEG,
+              cor.sampleday = my_cor(.data, "inches"),  # this could all be more elegant
+              pval.sampleday = my_cor.p(.data, "inches"),
+              cor.24hrs = my_cor(.data, "daily_24hrs"),
+              pval.24hrs = my_cor.p(.data, "daily_24hrs"),
+              cor.48hrs = my_cor(.data, "daily_48hrs"),
+              pval.48hrs = my_cor.p(.data, "daily_48hrs"),
+              cor.7d = my_cor(.data, "daily_7d"),
+              pval.7d = my_cor.p(.data, "daily_7d"))
+
+knitr::kable(nonbay_stns2,
+             caption = "Spearman Correlations and p-values for Entero~rainfall by bay segment",
+             digits = 3)    
 ```
 
