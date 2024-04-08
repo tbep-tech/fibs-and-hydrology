@@ -277,6 +277,7 @@ Precip is similar between watersheds; hydrologic load is highest in Hillsborough
 
 # Hydrologic Loads and Enterococcus  
 
+## FIB data import
 
 ```{r}
 fib_dat <- readRDS(here::here("fib-data", "tbeptools_importwqp.rds"))
@@ -309,7 +310,9 @@ fib_hydro <- left_join(fib_baysegs, combnd,
 
 ```{r}
 fib_daily_prcp <- fib_baysegs |> 
-    mutate(date = as.Date(SampleTime)) |> 
+    mutate(date = as.Date(SampleTime),
+           Season = case_when(mo %in% c(6:9) ~ "Wet",
+                              .default = "Dry")) |> 
     left_join(prcp_daily_bayseg,
               by = c("date", "BAY_SEG"))
 ```
@@ -888,7 +891,9 @@ my_cor.p <- function(df, x){
         method = "spearman",
         use = "pairwise.complete.obs")$p.value
 }
+```
 
+```{r}
 nonbay_stns2 <- fib_daily_nonbay |> 
     st_drop_geometry() |> 
     filter(BAY_SEG != "Manatee River") |> # no values, messign things up
@@ -907,4 +912,172 @@ knitr::kable(nonbay_stns2,
              caption = "Spearman Correlations and p-values for Entero~rainfall by bay segment",
              digits = 3)    
 ```
+
+## Wet vs. Dry Season  
+
+Wet season is June-Sept. Dry is the rest.  
+
+```{r}
+fib_daily_long_nonbay |> 
+    filter(time_period == "sample + 2 days") |> 
+ggplot(aes(x = total, y = val, shape = Season)) +
+    geom_point(aes(col = Season),
+               alpha = 0.5,
+               size = 2) +
+    facet_wrap(~BAY_SEG) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_muted() +
+    labs(title = "Non-bay stations, previous 48 hrs",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus")
+```
+
+
+
+
+```{r}
+nonbay_stns3 <- fib_daily_nonbay |> 
+    st_drop_geometry() |> 
+    filter(BAY_SEG != "Manatee River") |> # no values, messign things up
+    select(BAY_SEG, Season, val, inches:daily_7d) |> 
+    summarize(.by = c(BAY_SEG, Season),
+              cor.sampleday = my_cor(.data, "inches"),  # this could all be more elegant
+              pval.sampleday = my_cor.p(.data, "inches"),
+              cor.24hrs = my_cor(.data, "daily_24hrs"),
+              pval.24hrs = my_cor.p(.data, "daily_24hrs"),
+              cor.48hrs = my_cor(.data, "daily_48hrs"),
+              pval.48hrs = my_cor.p(.data, "daily_48hrs"),
+              cor.7d = my_cor(.data, "daily_7d"),
+              pval.7d = my_cor.p(.data, "daily_7d"))
+
+knitr::kable(nonbay_stns3,
+             caption = "Spearman Correlations and p-values for Entero~rainfall by bay segment",
+             digits = 3)    
+```
+
+
+# ECDFs  
+
+Empirical cumulative distribution functions  
+
+## Freshwater  
+
+Differences due to precipitation may show up better in freshwater than estuarine waters; I'll explore that a little bit here just to see what it looks like.    
+
+```{r}
+fib_fresh <- fib_dat |> 
+    filter(class == "Fresh",
+           var == "ecocci") |> 
+    mutate(Season = case_when(mo %in% c(6:9) ~ "Wet",
+                              .default = "Dry"))
+
+fib_fresh_baysegs <- fib_fresh |> 
+    st_as_sf(coords = c("Longitude", "Latitude"),
+             crs = "WGS84",
+             remove = FALSE) |>    # WGS84 is default for handheld GPS units
+    st_transform(crs = st_crs(swfwmdpixels)) |> 
+    st_intersection(bay_segs) |> 
+    mutate(bay_segment = case_match(BAY_SEG,
+                                    "Boca Ciega Bay" ~ "Remainder Lower Tampa Bay",
+                                    "Manatee River" ~ "Remainder Lower Tampa Bay",
+                                    .default = BAY_SEG))
+
+fib_fresh_hydro <- left_join(fib_fresh_baysegs, combnd,
+                       by = c("yr" = "year",
+                              "mo" = "month",
+                              "bay_segment"))
+```
+
+```{r}
+ggplot(fib_fresh_hydro, aes(x = val, col = Season)) +
+    geom_density() +
+    scale_x_log10() +
+    facet_wrap(~BAY_SEG, scales = "free_y") +
+    labs(title = "Distribution of Enterococcus concentrations at Freshwater stations",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus count",
+         y = "Density")
+```
+
+
+```{r}
+ggplot(fib_fresh_hydro, aes(x = val, col = Season)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    facet_wrap(~BAY_SEG) +
+    labs(title = "ECDF for freshwater Enterococcus samples by season and bay segment",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+```{r}
+ggplot(fib_fresh_hydro, aes(x = val, col = Season, group = mo)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    # facet_wrap(~mo) +
+    labs(title = "ECDF for freshwater Enterococcus samples by month",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+
+
+
+## Estuarine
+
+```{r}
+fib_nonbay <- fib_nonbay |> 
+    mutate(Season = case_when(mo %in% c(6:9) ~ "Wet",
+                              .default = "Dry"))
+```
+
+
+```{r}
+ggplot(fib_nonbay, aes(x = val, col = Season)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    labs(title = "ECDF for estuarine Enterococcus samples by season across all bay segments",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = val, col = Season)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    facet_wrap(~BAY_SEG) +
+    labs(title = "ECDF for estuarine Enterococcus samples by season and bay segment",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = val, col = Season, group = mo)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    # facet_wrap(~mo) +
+    labs(title = "ECDF for estuarine Enterococcus samples by month",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = val, col = Season, group = mo)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    facet_wrap(~BAY_SEG) +
+    labs(title = "ECDF for estuarine Enterococcus samples by month and bay segment",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+Not as clear separation in estuarine samples as in freshwater samples, but when all lumped together, there is still some.  
 
