@@ -13,7 +13,8 @@ book:
   chapters:
     - index.qmd
     - data_sources.qmd
-    - how_to_approach.qmd
+    - precip_and_hydro-loads.qmd
+    - FIBs_and_hydrology.qmd
     - summary.qmd
     - references.qmd
 

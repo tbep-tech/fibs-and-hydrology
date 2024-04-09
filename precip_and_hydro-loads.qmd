@@ -1,0 +1,181 @@
+# General Precipitation Exploration  
+
+
+```{r}
+library(mapview)
+library(sf)
+library(tidyverse)
+library(tmap)
+library(tbeptools)
+library(khroma)
+library(corrplot)
+```
+
+## Data Import  
+
+
+```{r}
+# read in the .RData file made in making_dataframes.R
+# swfwmdpixels
+# bay_segs
+# prcp
+# daily_prcp
+# hydro
+
+load(here::here("sourced_data", "combined_precip.RData"))
+load(here::here("sourced_data", "combined_spatial.RData"))
+```
+
+
+Which precip to look at? Total for watershed? total within X kilometers of a station? (and what should X be?) Maybe one task is to figure out what's best. Could vary by watershed too though - Hillsborough Bay's is way bigger than Middle Tampa Bay's.... maybe a bigger time lag in situations like that (but still, if we're only looking at monthly....)
+
+```{r}
+# subset precip for exploratory mapping; 2022 only
+prcp_bayseg <- prcp |> 
+    summarize(.by = c(BAY_SEG, month, year),
+              inches = mean(inches, na.rm = TRUE)) |> 
+    filter(year == 2022) |> 
+    left_join(bay_segs) |> 
+    st_as_sf()
+
+prcp_pixel <- prcp |> 
+    select(-BAY_SEG) |> 
+    distinct() |> 
+    filter(year == 2022) |> 
+    left_join(select(precip_pixels, PIXEL, geometry)) |> 
+    st_as_sf()
+```
+
+## Precip maps, comparing pixel-level to bay-segment-level  
+
+```{r}
+prcp_bayseg |> 
+    filter(month == 1) |> 
+    mapview(zcol = "inches",
+            layer.name = "Jan 2022")
+
+prcp_pixel |> 
+    filter(month == 1) |> 
+    mapview(zcol = "inches",
+            layer.name = "Jan 2022")
+```
+
+
+```{r}
+tm_shape(prcp_bayseg) +
+    tm_borders() +
+    tm_fill("inches",
+            n = 6,
+            palette = "YlGnBu") +
+    tm_facets(by = "month", nrow = 4)
+
+tm_shape(prcp_pixel) +
+    tm_fill("inches",
+            n = 6,
+            palette = "YlGnBu") +
+    tm_facets(by = "month", nrow = 4)
+
+```
+
+Variations throughout a year are so large that my worry about averaging up to bay segment being too rough is.... not really relevant after all. Should be fine.  
+
+```{r}
+prcp_bayseg <- prcp |> 
+    summarize(.by = c(BAY_SEG, month, year),
+              inches = mean(inches, na.rm = TRUE)) |> 
+    filter(year == 2022) |> 
+    left_join(bay_segs) |> 
+    st_as_sf()
+
+tm_shape(prcp_bayseg) +
+    tm_borders() +
+    tm_fill("inches",
+            palette = "YlGnBu",
+            n = 10) +
+    tm_facets(by = c("month", "year"))
+```
+
+Bay segment level should be fine.  
+
+## Precip and hydrologic loads  
+
+I'd expect these to correlate pretty well. Wonder if that changes by month and/or wet vs. dry season. Check that out here.  
+ 
+ 
+May have log-log relationships, or non-linear relationships, or need to look at it some different way. Let's see.  
+
+```{r}
+p <- ggplot(combnd) +
+    geom_point(aes(x = inches, y = hydro_load,
+                   col = bay_segment))
+
+p
+```
+
+Generally positive relationship (as you'd expect) but lots of spread, especially at higher precipitation levels.  
+
+Looks like a lot of that variability is due to the different bay segments.  
+
+```{r}
+p +
+    facet_wrap(~bay_segment)
+```
+
+Hillsborough Bay has a lot of variability - not surprising since it's the biggest of the watersheds.  Looks like the relationships hold until about 12 inches, then higher points are both infrequent and possibly show some leveling off.  This includes ~15 years of data (2009 and later) and looks almost exactly the same as when I used only 2016 and above.    
+
+
+Quick look at hydrologic load and the previous month's precip:  
+
+```{r}
+ggplot(combnd) +
+    geom_point(aes(x = lag1_prcp, y = hydro_load,
+                   col = bay_segment)) +
+    facet_wrap(~bay_segment) +
+    theme(legend.position = "none") +
+    labs(x = "previous month's precipitation (inches)",
+         y = "hydrologic load")
+```
+
+Looks pretty similar, though with more variation; not entirely unexpected at this aggregation level.  
+
+
+```{r}
+ggplot(combnd) +
+    geom_point(aes(x = inches, y = hydro_load,
+                   col = factor(month))) +
+    scale_color_brewer(palette = "Paired") +
+    facet_wrap(~bay_segment)
+```
+
+Makes sense that the relationship would vary by bay segment/watershed size. In Hillsborough Bay, we sort of see Aug-October on the high side of the hydrologic loads, even for the same amount of precipitation as in (e.g.) April.    
+
+```{r}
+ggplot(combnd) +
+    geom_point(aes(x = inches, y = hydro_load,
+                   col = bay_segment)) +
+    scale_color_brewer(palette = "Set1") +
+    facet_wrap(~month)
+```
+
+Varies a lot by month and bay segment, especially in September.  
+
+```{r}
+ggplot(combnd) +
+    geom_boxplot(aes(x = factor(month), y = inches,
+                    col = bay_segment)) +
+    scale_color_brewer(palette = "Set1") +
+    labs(title = "Precip variability by month x bay segment",
+         x = "Month",
+         y = "Monthly Total Precipitation (inches)")
+
+ggplot(combnd) +
+    geom_boxplot(aes(x = factor(month), y = hydro_load,
+                    col = bay_segment)) +
+    scale_color_brewer(palette = "Set1") +
+    labs(title = "Hydro load variability by month x bay segment",
+         x = "Month",
+         y = "Monthly hydrologic load (10^6 m3)")
+```
+
+Precip is similar between watersheds; hydrologic load is highest in Hillsborough Bay and lowest in lower Tampa Bay. Middle and Old Tampa Bay are pretty comparable.  
+

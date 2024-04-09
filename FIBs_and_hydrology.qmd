@@ -1,0 +1,838 @@
+# Fecal Indicator Bacteria (FIBs) and Hydrology  
+
+We don't even really know the best way to even start looking at these relationships, so this portion will contain some exploratory visualizations.  
+
+So to start, I'm just going to pull out a few sites where I would expect to see some influence - sites that aren't in the bays, but are maybe around the edges. I'll hand-pick and hard-code, to figure out what this all even looks like, then figure out how to scale up.  
+
+We have monthly precipitation data and hydrologic load data.  
+
+
+
+
+```{r}
+library(mapview)
+library(sf)
+library(tidyverse)
+library(tmap)
+library(tbeptools)
+library(khroma)
+library(corrplot)
+```
+
+## Data Import  
+
+
+```{r}
+# read in the .RData file made in making_dataframes.R
+load(here::here("sourced_data", "combined_precip.RData"))
+load(here::here("sourced_data", "combined_spatial.RData"))
+```
+
+
+
+# Hydrologic Loads and Enterococcus  
+
+## FIB data import
+
+```{r}
+fib_dat <- readRDS(here::here("fib-data", "tbeptools_importwqp.rds"))
+
+fib_sub <- fib_dat |> 
+    filter(yr >= 2009,
+           class == "Estuary",
+           var == "ecocci")
+
+# get those attached to bay segments  
+fib_baysegs <- fib_sub |> 
+    st_as_sf(coords = c("Longitude", "Latitude"),
+             crs = "WGS84",
+             remove = FALSE) |>    # WGS84 is default for handheld GPS units
+    st_transform(crs = st_crs(swfwmdpixels)) |> 
+    st_intersection(bay_segs) |> 
+    mutate(bay_segment = case_match(BAY_SEG,
+                                    "Boca Ciega Bay" ~ "Remainder Lower Tampa Bay",
+                                    "Manatee River" ~ "Remainder Lower Tampa Bay",
+                                    .default = BAY_SEG))
+
+fib_hydro <- left_join(fib_baysegs, combnd,
+                       by = c("yr" = "year",
+                              "mo" = "month",
+                              "bay_segment"))
+
+```
+
+### Attach daily precipitation  
+
+```{r}
+fib_daily_prcp <- fib_baysegs |> 
+    mutate(date = as.Date(SampleTime),
+           Season = case_when(mo %in% c(6:9) ~ "Wet",
+                              .default = "Dry")) |> 
+    left_join(prcp_daily_bayseg,
+              by = c("date", "BAY_SEG"))
+```
+
+
+## Entero by monthly hydro load  
+
+```{r}
+ggplot(fib_hydro, aes(x = hydro_load,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. hydrologic load; log-log scale",
+         x = "Hydrologic Load",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+Interesting..... it's not necessarily the monthly hydrologic loads that matter (though it's clear that the higher hydrologic loads occur in certain months). Could come down to precipitation in some previous time periods.  
+
+Could also be that because the majority of stations are in the bay proper, they're diluted and that's driving the lack-of-relationship. Really need to break this all out by "in-bay" vs. "have some land near the station".  
+
+### Lagged hydro load  
+
+```{r}
+ggplot(fib_hydro, aes(x = lag1_hydro,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. lagged hydrologic load; log-log scale",
+         x = "Hydrologic Load in previous month",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+Nothing new.  
+
+First a little more exploration of entero concentrations by time of year.  
+
+## Entero by monthly precip  
+
+```{r}
+ggplot(fib_hydro, aes(x = inches,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.3) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. Monthly Precip",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+
+We see it a bit more with precip rather than hydrologic load, at least in the higher values.  
+
+
+### Previous month's precip  
+
+
+```{r}
+ggplot(fib_hydro, aes(x = lag1_prcp,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.3) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. Lagged Precip",
+         x = "Precipitation (in) in previous month",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+Yeah, not that different.  
+
+
+## Entero by month  
+
+```{r}
+ggplot(fib_hydro,
+       aes(x = factor(mo),
+           y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+                size = 0.7,
+                alpha = 0.4) +
+    geom_boxplot(alpha = 0) +
+    scale_y_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero counts by month",
+         x = "Month",
+         y = "Enterococcus") +
+    theme(legend.position = "none")
+```
+
+## Hydro load by month  
+
+```{r}
+ggplot(hydro_sub,
+       aes(x = factor(month),
+           y = hydro_load)) +
+    geom_jitter(aes(col = factor(month)),
+                size = 0.7,
+                alpha = 0.6) +
+    geom_boxplot(alpha = 0) +
+    scale_y_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Hydrologic Load by month",
+         x = "Month",
+         y = "Hydrologic Load") +
+    theme(legend.position = "none")
+```
+
+
+## Precip by month  
+
+```{r}
+ggplot(combnd,
+       aes(x = factor(month),
+           y = inches)) +
+    geom_jitter(aes(col = factor(month)),
+                size = 0.7,
+                alpha = 0.6) +
+    geom_boxplot(alpha = 0) +
+    scale_y_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Precip by month",
+         x = "Month",
+         y = "Monthly Precipitation (inches)") +
+    theme(legend.position = "none")
+```
+
+
+# Inside bay vs. not  
+
+```{r}
+tbseg2 <- tbseg |> 
+    st_transform(crs = st_crs(swfwmdpixels))
+
+fib_nonbay <- st_filter(fib_hydro, st_union(tbseg2), .predicate = st_disjoint)
+```
+
+Note, this isn't good spatial coverage - may want to think about including freshwater sites too (eek).  
+
+```{r}
+mapview(fib_nonbay)
+```
+
+## Entero by month  
+
+```{r}
+ggplot(fib_nonbay,
+       aes(x = factor(mo),
+           y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+                size = 0.7,
+                alpha = 0.4) +
+    geom_boxplot(alpha = 0) +
+    scale_y_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero counts by month",
+         subtitle = "stations that are not in the bay proper",
+         x = "Month",
+         y = "Enterococcus") +
+    theme(legend.position = "none")
+```
+
+Still really not any cycling.... surprising. Maybe a little in Hillsborough Bay.  
+
+## Entero by monthly hydro load  
+
+```{r}
+ggplot(fib_nonbay, aes(x = hydro_load,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. hydrologic load",
+         subtitle = "stations that are not in the bay proper",
+         x = "Hydrologic Load",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = hydro_load,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    # facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. hydrologic load; log-log scale",
+         subtitle = "stations that are not in the bay proper",
+         x = "Hydrologic Load",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+
+## Entero and precip  
+
+```{r}
+ggplot(fib_nonbay, aes(x = inches,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    # facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. precip",
+         subtitle = "stations that are not in the bay proper",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = inches,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. precip",
+         subtitle = "stations that are not in the bay proper",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+
+ggplot(fib_nonbay, aes(x = inches,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. precip; log-log scale",
+         subtitle = "stations that are not in the bay proper",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+Changing the x-axis between log and 'regular' really changes how it looks.  
+
+### Lagged precip  
+
+```{r}
+ggplot(fib_nonbay, aes(x = lag1_prcp,
+                      y = val)) +
+    geom_jitter(aes(col = bay_segment),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    # facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. lagged precip",
+         subtitle = "stations that are not in the bay proper",
+         x = "Previous Month's Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = lag1_prcp,
+                      y = val)) +
+    geom_jitter(aes(col = as.factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    # scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. lagged precip",
+         subtitle = "stations that are not in the bay proper",
+         x = "Previous Month's Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+
+ggplot(fib_nonbay, aes(x = lag1_prcp,
+                      y = val)) +
+    geom_jitter(aes(col = factor(mo)),
+               size = 2,
+               alpha = 0.5) +
+    geom_smooth() +
+    geom_rug(col = "gray40") +
+    scale_y_log10() +
+    scale_x_log10() +
+    facet_wrap(~bay_segment) +
+    labs(title = "Entero vs. lagged precip; log-log scale",
+         subtitle = "stations that are not in the bay proper",
+         x = "Precipitation (in)",
+         y = "Enterococcus",
+         col = "Month")
+```
+
+
+# A few individual sites  
+
+OrgID 21FLHILL_WQX
+Stations 22, 136, 036, 054
+
+
+
+```{r}
+fib_tiny <- fib_hydro |> 
+    dplyr::filter(OrgID == "21FLHILL_WQX",
+           Station %in% c("22", "136", "036", "054"))
+mapview(fib_tiny)
+```
+
+## Time Series  
+
+```{r}
+fib_long <- fib_tiny |> 
+    mutate(Date = lubridate::ymd(paste(yr, mo, "01"))) |> 
+    rename(Entero = val) |> 
+    select(OrgID, Station, Date, Entero, bay_segment, inches, hydro_load, lag1_prcp, lag1_hydro, geometry) |> 
+    pivot_longer(c(Entero, inches, hydro_load, lag1_prcp, lag1_hydro),
+                 names_to = "variable",
+                 values_to = "value")
+```
+
+```{r}
+ggplot(fib_long, aes(x = Date, y = value, col = Station)) +
+    geom_point() +
+    geom_line() +
+    scale_y_log10() +
+    facet_wrap(~variable, scales = "free_y",
+               ncol = 1)
+```
+
+Well well well, we have at least one disappearing station, and it's one where enterococcus was generally high.  
+
+```{r}
+ggplot(fib_tiny, aes(x = inches, y = val, col = Station, group = Station)) +
+    geom_point(size = 2, alpha = 0.7) +
+    scale_y_log10() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(x = "Precip",
+         y = "Entero")
+```
+
+And really it looks like values within a station are sort of within their own range, different than other stations, as opposed to really correlating with precip (at least these few stations, on this graph).  Maybe a bit of a relationship if we force it to linear rather than loess.  
+
+```{r}
+ggplot(fib_tiny, aes(x = lag1_prcp, y = val, col = Station, group = Station)) +
+    geom_point(size = 2, alpha = 0.7) +
+    scale_y_log10() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(x = "Lagged Precip",
+         y = "Entero")
+```
+
+A little different, but not much.  
+
+
+```{r}
+ggplot(fib_tiny, aes(x = hydro_load, y = val, col = Station, group = Station)) +
+    geom_point(size = 2, alpha = 0.7) +
+    scale_y_log10() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(x = "Hydro load",
+         y = "Entero")
+```
+
+
+# experimentation  
+
+```{r}
+#| eval: false
+
+fib_tiny <- fib_hydro[c(1, 100, 400, 600, 2000, 5000, 8000, 10000), ]
+mapview(fib_tiny)
+
+nearBorder <- rowSums(st_is_within_distance(fib_tiny, tbseg2, dist = 10, sparse = FALSE))
+
+fib_within_x <- fib_tiny[nearBorder > 0, ]
+mapview(fib_within100) + mapview(tbseg2)
+```
+
+
+# Daily-level precipitation  
+
+Incorporate day-of-sampling, day + day before (24 hrs), day + 2 days before (48 hrs), and day + week before (7-day)  
+
+Working with `fib_daily_prcp` data frame.  
+
+```{r}
+fib_daily_nonbay <- st_filter(fib_daily_prcp, st_union(tbseg2), .predicate = st_disjoint)
+
+fib_daily_long <- fib_daily_prcp |> 
+    pivot_longer(inches:daily_7d,
+                 names_to = "time_period",
+                 values_to = "total") |> 
+    mutate(time_period = case_match(time_period,
+                                    "inches" ~ "day of sample",
+                                    "daily_24hrs" ~ "sample + previous day",
+                                    "daily_48hrs" ~ "sample + 2 days",
+                                    "daily_7d" ~ "previous week"))
+fib_daily_long_nonbay <- fib_daily_long |> 
+    filter(Station %in% fib_daily_nonbay$Station)
+```
+
+```{r}
+ggplot(fib_daily_long, aes(x = total, y = val)) +
+    geom_point(aes(col = time_period),
+               alpha = 0.4) +
+    facet_wrap(~BAY_SEG) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_okabeito() +
+    labs(title = "All stations",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus",
+         col = "time period of precip total")
+```
+
+```{r}
+ggplot(fib_daily_long, aes(x = total, y = val)) +
+    geom_point(aes(col = BAY_SEG),
+               alpha = 0.4) +
+    facet_wrap(~time_period) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_okabeito() +
+    labs(title = "All stations",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus",
+         col = "Bay Segment")
+```
+
+```{r}
+ggplot(fib_daily_long_nonbay, aes(x = total, y = val)) +
+    geom_point(aes(col = time_period),
+               alpha = 0.4) +
+    facet_wrap(~BAY_SEG) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_okabeito() +
+    labs(title = "Non-bay stations",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus",
+         col = "time period of precip total")
+```
+
+```{r}
+ggplot(fib_daily_long_nonbay, aes(x = total, y = val)) +
+    geom_point(aes(col = BAY_SEG),
+               alpha = 0.4) +
+    facet_wrap(~time_period) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_okabeito() +
+    labs(title = "Non-bay stations",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus",
+         col = "Bay Segment")
+```
+
+### Calculate correlations  
+
+Spearman correlations  
+
+#### All stations, all bay segments combined  
+
+```{r}
+all_stns <- fib_daily_prcp |> 
+    st_drop_geometry() |> 
+    select(val, inches:daily_7d) |> 
+    set_names(c("Entero", "sample_day_precip",
+                "sample_and_24hrs",
+                "sample_and_48hrs",
+                "previous_week"))
+```
+
+```{r}
+corr_all <- cor(all_stns,
+    use = "pairwise.complete.obs",
+    method = "spearman")
+
+knitr::kable(corr_all,
+             caption = "Spearman correlation coefficients",
+             digits = 3)
+knitr::kable(cor.mtest(corr_all)$p,
+             caption = "p-values of Spearman correlations",
+             digits = 3)
+
+```
+
+
+#### Non-bay stations, all bay segments combined  
+
+```{r}
+nonbay_stns <- fib_daily_nonbay |> 
+    st_drop_geometry() |> 
+    select(val, inches:daily_7d) |> 
+    set_names(c("Entero", "sample_day_precip",
+                "sample_and_24hrs",
+                "sample_and_48hrs",
+                "previous_week"))
+```
+
+```{r}
+corr_all <- cor(nonbay_stns,
+    use = "pairwise.complete.obs",
+    method = "spearman")
+
+knitr::kable(corr_all,
+             caption = "Spearman correlation coefficients",
+             digits = 3)
+knitr::kable(cor.mtest(corr_all)$p,
+             caption = "p-values of Spearman correlations",
+             digits = 3)
+```
+
+#### Non-bay stations, by bay segment  
+
+```{r}
+options(scipen = 999)
+
+my_cor <- function(df, x){
+    cor(df[["val"]], df[[x]],
+        method = "spearman",
+        use = "pairwise.complete.obs")
+}
+
+my_cor.p <- function(df, x){
+    cor.test(df[["val"]], df[[x]],
+        method = "spearman",
+        use = "pairwise.complete.obs")$p.value
+}
+```
+
+```{r}
+nonbay_stns2 <- fib_daily_nonbay |> 
+    st_drop_geometry() |> 
+    filter(BAY_SEG != "Manatee River") |> # no values, messign things up
+    select(BAY_SEG, val, inches:daily_7d) |> 
+    summarize(.by = BAY_SEG,
+              cor.sampleday = my_cor(.data, "inches"),  # this could all be more elegant
+              pval.sampleday = my_cor.p(.data, "inches"),
+              cor.24hrs = my_cor(.data, "daily_24hrs"),
+              pval.24hrs = my_cor.p(.data, "daily_24hrs"),
+              cor.48hrs = my_cor(.data, "daily_48hrs"),
+              pval.48hrs = my_cor.p(.data, "daily_48hrs"),
+              cor.7d = my_cor(.data, "daily_7d"),
+              pval.7d = my_cor.p(.data, "daily_7d"))
+
+knitr::kable(nonbay_stns2,
+             caption = "Spearman Correlations and p-values for Entero~rainfall by bay segment",
+             digits = 3)    
+```
+
+## Wet vs. Dry Season  
+
+Wet season is June-Sept. Dry is the rest.  
+
+```{r}
+fib_daily_long_nonbay |> 
+    filter(time_period == "sample + 2 days") |> 
+ggplot(aes(x = total, y = val, shape = Season)) +
+    geom_point(aes(col = Season),
+               alpha = 0.5,
+               size = 2) +
+    facet_wrap(~BAY_SEG) +
+    scale_x_log10() +
+    scale_y_log10() +
+    scale_color_muted() +
+    labs(title = "Non-bay stations, previous 48 hrs",
+         subtitle = "note log-log scale",
+         x = "Precip (inches)",
+         y = "Enterococcus")
+```
+
+
+
+
+```{r}
+nonbay_stns3 <- fib_daily_nonbay |> 
+    st_drop_geometry() |> 
+    filter(BAY_SEG != "Manatee River") |> # no values, messign things up
+    select(BAY_SEG, Season, val, inches:daily_7d) |> 
+    summarize(.by = c(BAY_SEG, Season),
+              cor.sampleday = my_cor(.data, "inches"),  # this could all be more elegant
+              pval.sampleday = my_cor.p(.data, "inches"),
+              cor.24hrs = my_cor(.data, "daily_24hrs"),
+              pval.24hrs = my_cor.p(.data, "daily_24hrs"),
+              cor.48hrs = my_cor(.data, "daily_48hrs"),
+              pval.48hrs = my_cor.p(.data, "daily_48hrs"),
+              cor.7d = my_cor(.data, "daily_7d"),
+              pval.7d = my_cor.p(.data, "daily_7d"))
+
+knitr::kable(nonbay_stns3,
+             caption = "Spearman Correlations and p-values for Entero~rainfall by bay segment",
+             digits = 3)    
+```
+
+
+# ECDFs  
+
+Empirical cumulative distribution functions  
+
+## Freshwater  
+
+Differences due to precipitation may show up better in freshwater than estuarine waters; I'll explore that a little bit here just to see what it looks like.    
+
+```{r}
+fib_fresh <- fib_dat |> 
+    filter(class == "Fresh",
+           var == "ecocci") |> 
+    mutate(Season = case_when(mo %in% c(6:9) ~ "Wet",
+                              .default = "Dry"))
+
+fib_fresh_baysegs <- fib_fresh |> 
+    st_as_sf(coords = c("Longitude", "Latitude"),
+             crs = "WGS84",
+             remove = FALSE) |>    # WGS84 is default for handheld GPS units
+    st_transform(crs = st_crs(swfwmdpixels)) |> 
+    st_intersection(bay_segs) |> 
+    mutate(bay_segment = case_match(BAY_SEG,
+                                    "Boca Ciega Bay" ~ "Remainder Lower Tampa Bay",
+                                    "Manatee River" ~ "Remainder Lower Tampa Bay",
+                                    .default = BAY_SEG))
+
+fib_fresh_hydro <- left_join(fib_fresh_baysegs, combnd,
+                       by = c("yr" = "year",
+                              "mo" = "month",
+                              "bay_segment"))
+```
+
+```{r}
+ggplot(fib_fresh_hydro, aes(x = val, col = Season)) +
+    geom_density() +
+    scale_x_log10() +
+    facet_wrap(~BAY_SEG, scales = "free_y") +
+    labs(title = "Distribution of Enterococcus concentrations at Freshwater stations",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus count",
+         y = "Density")
+```
+
+
+```{r}
+ggplot(fib_fresh_hydro, aes(x = val, col = Season)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    facet_wrap(~BAY_SEG) +
+    labs(title = "ECDF for freshwater Enterococcus samples by season and bay segment",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+```{r}
+ggplot(fib_fresh_hydro, aes(x = val, col = Season, group = mo)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    # facet_wrap(~mo) +
+    labs(title = "ECDF for freshwater Enterococcus samples by month",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+
+
+
+## Estuarine
+
+```{r}
+fib_nonbay <- fib_nonbay |> 
+    mutate(Season = case_when(mo %in% c(6:9) ~ "Wet",
+                              .default = "Dry"))
+```
+
+
+```{r}
+ggplot(fib_nonbay, aes(x = val, col = Season)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    labs(title = "ECDF for estuarine Enterococcus samples by season across all bay segments",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = val, col = Season)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    facet_wrap(~BAY_SEG) +
+    labs(title = "ECDF for estuarine Enterococcus samples by season and bay segment",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = val, col = Season, group = mo)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    # facet_wrap(~mo) +
+    labs(title = "ECDF for estuarine Enterococcus samples by month",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+```{r}
+ggplot(fib_nonbay, aes(x = val, col = Season, group = mo)) +
+    stat_ecdf() +
+    scale_x_log10() +
+    facet_wrap(~BAY_SEG) +
+    labs(title = "ECDF for estuarine Enterococcus samples by month and bay segment",
+         subtitle = "note log10 x-axis",
+         x = "Enterococcus value",
+         y = "cumulative proportion")
+```
+
+Not as clear separation in estuarine samples as in freshwater samples, but when all lumped together, there is still some.  
+
