@@ -12,10 +12,8 @@ book:
   repo-actions: [source]
   chapters:
     - index.qmd
-    - background.qmd
     - data_sources.qmd
     - how_to_approach.qmd
-    - in-depth.qmd
     - summary.qmd
     - references.qmd
 
