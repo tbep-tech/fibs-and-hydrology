@@ -19,9 +19,6 @@ hydro <- hydro |>
     mutate(lag1_hydro = lag(hydro_load)) |> 
     ungroup()
 
-hydro_sub <- hydro |> 
-    dplyr::filter(year >= 2009)
-
 
 # Precip subsetting ----
 

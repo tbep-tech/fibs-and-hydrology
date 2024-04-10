@@ -15,10 +15,8 @@ book:
     - data_sources.qmd
     - precip_and_hydro-loads.qmd
     - FIBs_and_hydrology.qmd
-    - summary.qmd
-    - references.qmd
+    - takeaways.qmd
 
-bibliography: references.bib
 
 format:
   html:

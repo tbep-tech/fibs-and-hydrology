@@ -23,16 +23,13 @@ library(corrplot)
 
 
 ```{r}
-# read in the .RData file made in making_dataframes.R
+# spatial and precip files
 load(here::here("sourced_data", "combined_precip.RData"))
 load(here::here("sourced_data", "combined_spatial.RData"))
 ```
 
 
-
-# Hydrologic Loads and Enterococcus  
-
-## FIB data import
+### FIB data import
 
 ```{r}
 fib_dat <- readRDS(here::here("fib-data", "tbeptools_importwqp.rds"))
@@ -162,7 +159,7 @@ ggplot(fib_hydro, aes(x = lag1_prcp,
          col = "Month")
 ```
 
-Yeah, not that different.  
+Not very different.  
 
 
 ## Entero by month  
@@ -184,6 +181,14 @@ ggplot(fib_hydro,
 ```
 
 ## Hydro load by month  
+
+Only since 2009, to keep data frame size under control.  
+
+```{r}
+hydro_sub <- hydro |> 
+    dplyr::filter(year >= 2009)
+```
+
 
 ```{r}
 ggplot(hydro_sub,
@@ -221,7 +226,7 @@ ggplot(combnd,
 ```
 
 
-# Inside bay vs. not  
+## Inside bay vs. not  
 
 ```{r}
 tbseg2 <- tbseg |> 
@@ -236,7 +241,7 @@ Note, this isn't good spatial coverage - may want to think about including fresh
 mapview(fib_nonbay)
 ```
 
-## Entero by month  
+### Entero by month  
 
 ```{r}
 ggplot(fib_nonbay,
@@ -257,7 +262,7 @@ ggplot(fib_nonbay,
 
 Still really not any cycling.... surprising. Maybe a little in Hillsborough Bay.  
 
-## Entero by monthly hydro load  
+### Entero by monthly hydro load  
 
 ```{r}
 ggplot(fib_nonbay, aes(x = hydro_load,
@@ -296,7 +301,7 @@ ggplot(fib_nonbay, aes(x = hydro_load,
 ```
 
 
-## Entero and precip  
+### Entero and precip  
 
 ```{r}
 ggplot(fib_nonbay, aes(x = inches,
@@ -407,7 +412,7 @@ ggplot(fib_nonbay, aes(x = lag1_prcp,
 ```
 
 
-# A few individual sites  
+## A few individual sites  
 
 OrgID 21FLHILL_WQX
 Stations 22, 136, 036, 054
@@ -421,7 +426,7 @@ fib_tiny <- fib_hydro |>
 mapview(fib_tiny)
 ```
 
-## Time Series  
+### Time Series  
 
 ```{r}
 fib_long <- fib_tiny |> 
@@ -477,22 +482,7 @@ ggplot(fib_tiny, aes(x = hydro_load, y = val, col = Station, group = Station)) +
 ```
 
 
-# experimentation  
-
-```{r}
-#| eval: false
-
-fib_tiny <- fib_hydro[c(1, 100, 400, 600, 2000, 5000, 8000, 10000), ]
-mapview(fib_tiny)
-
-nearBorder <- rowSums(st_is_within_distance(fib_tiny, tbseg2, dist = 10, sparse = FALSE))
-
-fib_within_x <- fib_tiny[nearBorder > 0, ]
-mapview(fib_within100) + mapview(tbseg2)
-```
-
-
-# Daily-level precipitation  
+## Daily-level precipitation  
 
 Incorporate day-of-sampling, day + day before (24 hrs), day + 2 days before (48 hrs), and day + week before (7-day)  
 
@@ -713,11 +703,11 @@ knitr::kable(nonbay_stns3,
 ```
 
 
-# ECDFs  
+## ECDFs  
 
 Empirical cumulative distribution functions  
 
-## Freshwater  
+### Freshwater  
 
 Differences due to precipitation may show up better in freshwater than estuarine waters; I'll explore that a little bit here just to see what it looks like.    
 
@@ -782,7 +772,7 @@ ggplot(fib_fresh_hydro, aes(x = val, col = Season, group = mo)) +
 
 
 
-## Estuarine
+### Estuarine
 
 ```{r}
 fib_nonbay <- fib_nonbay |> 
