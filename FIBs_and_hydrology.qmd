@@ -60,9 +60,6 @@ fib_hydro <- left_join(fib_baysegs, combnd,
 
 ### Attach daily precipitation  
 
-# SOMETHING WENT WRONG IN THIS JOIN, WHAT????  
-
-Only processed daily precip data back to 2018, so there are lots of NAs in the new data frame.  
 
 ```{r}
 fib_daily_prcp <- fib_baysegs |> 
