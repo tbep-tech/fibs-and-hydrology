@@ -60,13 +60,18 @@ fib_hydro <- left_join(fib_baysegs, combnd,
 
 ### Attach daily precipitation  
 
+# SOMETHING WENT WRONG IN THIS JOIN, WHAT????  
+
+Only processed daily precip data back to 2018, so there are lots of NAs in the new data frame.  
+
 ```{r}
 fib_daily_prcp <- fib_baysegs |> 
     mutate(date = as.Date(SampleTime),
            Season = case_when(mo %in% c(6:9) ~ "Wet",
                               .default = "Dry")) |> 
     left_join(prcp_daily_bayseg,
-              by = c("date", "BAY_SEG"))
+              by = c("date", "BAY_SEG")) |> 
+    filter(!is.na(inches))
 ```
 
 
@@ -235,7 +240,7 @@ tbseg2 <- tbseg |>
 fib_nonbay <- st_filter(fib_hydro, st_union(tbseg2), .predicate = st_disjoint)
 ```
 
-Note, this isn't good spatial coverage - may want to think about including freshwater sites too (eek).  
+Note, this isn't great spatial coverage. But it does seem more likely that we'd pick up a signal at these stations than if we included all of the ones that are in the bay too.    
 
 ```{r}
 mapview(fib_nonbay)
@@ -641,7 +646,7 @@ my_cor.p <- function(df, x){
 ```{r}
 nonbay_stns2 <- fib_daily_nonbay |> 
     st_drop_geometry() |> 
-    filter(BAY_SEG != "Manatee River") |> # no values, messign things up
+    filter(BAY_SEG != "Manatee River") |> # no values, messing things up
     select(BAY_SEG, val, inches:daily_7d) |> 
     summarize(.by = BAY_SEG,
               cor.sampleday = my_cor(.data, "inches"),  # this could all be more elegant
@@ -670,13 +675,32 @@ ggplot(aes(x = total, y = val, shape = Season)) +
                alpha = 0.5,
                size = 2) +
     facet_wrap(~BAY_SEG) +
-    scale_x_log10() +
+    scale_x_log10(breaks = c(0.001, 0.01, 0.1, 1),
+                  labels = c("0.001", "0.01", "0.1", "1")) +
     scale_y_log10() +
     scale_color_muted() +
     labs(title = "Non-bay stations, previous 48 hrs",
          subtitle = "note log-log scale",
          x = "Precip (inches)",
-         y = "Enterococcus")
+         y = "Enterococcus") +
+    theme(axis.text.x = element_text(angle = 40, 
+                                     hjust = 1,
+                                     vjust = 1))
+
+
+fib_daily_long_nonbay |> 
+    filter(time_period == "sample + 2 days") |> 
+ggplot(aes(x = total, y = val, shape = Season)) +
+    geom_point(aes(col = Season),
+               alpha = 0.5,
+               size = 2) +
+    facet_wrap(~BAY_SEG) +
+    scale_y_log10() +
+    scale_color_muted() +
+    labs(title = "Non-bay stations, previous 48 hrs",
+         subtitle = "note log10 y-axis; x-axis unscaled",
+         x = "Precip (inches)",
+         y = "Enterococcus") 
 ```
 
 
