@@ -1,6 +1,8 @@
 # General Exploration of Precipitation and Hydrologic Loads  
 
 
+
+
 ```{r}
 library(mapview)
 library(sf)
@@ -27,8 +29,6 @@ load(here::here("sourced_data", "combined_spatial.RData"))
 ```
 
 
-Which precip to look at? Total for watershed? total within X kilometers of a station? (and what should X be?) Maybe one task is to figure out what's best. Could vary by watershed too though - Hillsborough Bay's is way bigger than Middle Tampa Bay's.... maybe a bigger time lag in situations like that (but still, if we're only looking at monthly....)
-
 ```{r}
 # subset precip for exploratory mapping; 2022 only
 prcp_bayseg <- prcp |> 
@@ -47,6 +47,8 @@ prcp_pixel <- prcp |>
 ```
 
 ## Precip maps, comparing pixel-level to bay-segment-level  
+
+I was unsure what level of "averaging up" would be appropriate for comparing precipitation with FIBs, so this section explores the differences. I subsetted data to only 2022.  
 
 ```{r}
 prcp_bayseg |> 
@@ -77,7 +79,7 @@ tm_shape(prcp_pixel) +
 
 ```
 
-Variations throughout a year are so large that my worry about averaging up to bay segment being too rough is.... not really relevant after all. Should be fine.  
+Based on the large temporal variation across the year, much larger than the difference between pixels, I decided that bay-segment averages would be fine (spoiler alert - they're really not).    
 
 ```{r}
 prcp_bayseg <- prcp |> 
@@ -95,14 +97,11 @@ tm_shape(prcp_bayseg) +
     tm_facets(by = c("month", "year"))
 ```
 
-Bay segment level should be fine.  
+  
 
 ## Precip and hydrologic loads  
 
-I'd expect these to correlate pretty well. Wonder if that changes by month and/or wet vs. dry season. Check that out here.  
- 
- 
-May have log-log relationships, or non-linear relationships, or need to look at it some different way. Let's see.  
+Estimated precipitation and hydrologic loads seem like they should correlate pretty well, though that may vary by month, bay-segment, and/or wet vs. dry season. The relationships could be log-log relationships, otherwise non-linear relationships, or something surprising. This section explores these topics.    
 
 ```{r}
 p <- ggplot(combnd) +

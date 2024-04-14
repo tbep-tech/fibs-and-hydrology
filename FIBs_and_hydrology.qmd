@@ -1,13 +1,6 @@
 # Fecal Indicator Bacteria (FIBs) and Hydrology  
 
-We don't even really know the best way to even start looking at these relationships, so this portion will contain some exploratory visualizations.  
-
-So to start, I'm just going to pull out a few sites where I would expect to see some influence - sites that aren't in the bays, but are maybe around the edges. I'll hand-pick and hard-code, to figure out what this all even looks like, then figure out how to scale up.  
-
-We have monthly precipitation data and hydrologic load data.  
-
-
-
+This portion contains many exploratory visualizations, as I attempted to find the best way to examine relationships between FIBs - specifically Enterococcus - and hydrological inputs. 
 
 ```{r}
 library(mapview)
@@ -93,7 +86,7 @@ ggplot(fib_hydro, aes(x = hydro_load,
 
 Interesting..... it's not necessarily the monthly hydrologic loads that matter (though it's clear that the higher hydrologic loads occur in certain months). Could come down to precipitation in some previous time periods.  
 
-Could also be that because the majority of stations are in the bay proper, they're diluted and that's driving the lack-of-relationship. Really need to break this all out by "in-bay" vs. "have some land near the station".  
+Could also be that because the majority of stations are in the bay proper, they're diluted and that's driving the lack-of-relationship. Really need to break this all out by "in-bay" vs. "have some land near the station" (what I later call "non-bay").  
 
 ### Lagged hydro load  
 
@@ -138,7 +131,7 @@ ggplot(fib_hydro, aes(x = inches,
 ```
 
 
-We see it a bit more with precip rather than hydrologic load, at least in the higher values.  
+We see a bit more of a relationship with precip than hydrologic load, at least in the higher values, but nothing clear or strong. What stands out most is that higher precipitation amounts tend to occur in certain months.   
 
 
 ### Previous month's precip  
@@ -182,6 +175,8 @@ ggplot(fib_hydro,
     theme(legend.position = "none")
 ```
 
+No clear seasonal patterns in Enterococcus; as a reminder, all stations are included here, and patterns may emerge when we look only at the more land-influenced stations.  
+
 ## Hydro load by month  
 
 Only since 2009, to keep data frame size under control.  
@@ -208,6 +203,7 @@ ggplot(hydro_sub,
     theme(legend.position = "none")
 ```
 
+Clear seasonality.  
 
 ## Precip by month  
 
@@ -227,8 +223,12 @@ ggplot(combnd,
     theme(legend.position = "none")
 ```
 
+Again, clear seasonality.  
+
 
 ## Inside bay vs. not  
+
+The following stations are those that do not overlap with the `tbeptools::tbseg` layer - and so are not in the bay proper. For lack of a better term, I refer to these as "non-bay" stations. The graphics that follow are generally the same as those above, but on this subset of stations.    
 
 ```{r}
 tbseg2 <- tbseg |> 
@@ -262,7 +262,7 @@ ggplot(fib_nonbay,
     theme(legend.position = "none")
 ```
 
-Still really not any cycling.... surprising. Maybe a little in Hillsborough Bay.  
+Still really not any cycling.... surprising. There might be a little bit of a signal in Hillsborough Bay.  
 
 ### Entero by monthly hydro load  
 
@@ -299,7 +299,7 @@ ggplot(fib_nonbay, aes(x = hydro_load,
          subtitle = "stations that are not in the bay proper",
          x = "Hydrologic Load",
          y = "Enterococcus",
-         col = "Month")
+         col = "Bay Segment")
 ```
 
 
@@ -320,7 +320,7 @@ ggplot(fib_nonbay, aes(x = inches,
          subtitle = "stations that are not in the bay proper",
          x = "Precipitation (in)",
          y = "Enterococcus",
-         col = "Month")
+         col = "Bay Segment")
 ```
 
 ```{r}
@@ -338,7 +338,8 @@ ggplot(fib_nonbay, aes(x = inches,
          subtitle = "stations that are not in the bay proper",
          x = "Precipitation (in)",
          y = "Enterococcus",
-         col = "Month")
+         col = "Bay Segment") +
+    theme(legend.position = "none")
 
 ggplot(fib_nonbay, aes(x = inches,
                       y = val)) +
@@ -354,7 +355,8 @@ ggplot(fib_nonbay, aes(x = inches,
          subtitle = "stations that are not in the bay proper",
          x = "Precipitation (in)",
          y = "Enterococcus",
-         col = "Month")
+         col = "Bay Segment") +
+    theme(legend.position = "none")
 ```
 
 Changing the x-axis between log and 'regular' really changes how it looks.  
@@ -376,7 +378,7 @@ ggplot(fib_nonbay, aes(x = lag1_prcp,
          subtitle = "stations that are not in the bay proper",
          x = "Previous Month's Precipitation (in)",
          y = "Enterococcus",
-         col = "Month")
+         col = "Bay Segment")
 ```
 
 ```{r}
@@ -449,7 +451,7 @@ ggplot(fib_long, aes(x = Date, y = value, col = Station)) +
                ncol = 1)
 ```
 
-Well well well, we have at least one disappearing station, and it's one where enterococcus was generally high.  
+Hm, at least one station stopped being sampled, and it's one where enterococcus was generally high. When doing report cards, will need to make sure we track individual stations or account for variability in sampling in a different way.  
 
 ```{r}
 ggplot(fib_tiny, aes(x = inches, y = val, col = Station, group = Station)) +
@@ -486,9 +488,8 @@ ggplot(fib_tiny, aes(x = hydro_load, y = val, col = Station, group = Station)) +
 
 ## Daily-level precipitation  
 
-Incorporate day-of-sampling, day + day before (24 hrs), day + 2 days before (48 hrs), and day + week before (7-day)  
+There weren't many relationships with monthly precipitation, but could be more with a finer scale time period. This section incorporates the time periods: day-of-sampling, day + day before (24 hrs), day + 2 days before (48 hrs), and day + week before (7-day)  
 
-Working with `fib_daily_prcp` data frame.  
 
 ```{r}
 fib_daily_nonbay <- st_filter(fib_daily_prcp, st_union(tbseg2), .predicate = st_disjoint)
@@ -845,5 +846,5 @@ ggplot(fib_nonbay, aes(x = val, col = Season, group = mo)) +
          y = "cumulative proportion")
 ```
 
-Not as clear separation in estuarine samples as in freshwater samples, but when all lumped together, there is still some.  
+Not as clear separation in estuarine samples as in freshwater samples, but when all lumped together, there is still some. Generally the Enterococcus levels are lower in dry than in wet seasons.   
 
