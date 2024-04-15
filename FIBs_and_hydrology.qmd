@@ -64,8 +64,9 @@ fib_daily_prcp <- fib_baysegs |>
     filter(!is.na(inches))
 ```
 
+## All Estuarine Stations - Monthly relationships  
 
-## Entero by monthly hydro load  
+### Entero by monthly hydro load  
 
 ```{r}
 ggplot(fib_hydro, aes(x = hydro_load,
@@ -111,7 +112,7 @@ Nothing new.
 
 First a little more exploration of entero concentrations by time of year.  
 
-## Entero by monthly precip  
+### Entero by monthly precip  
 
 ```{r}
 ggplot(fib_hydro, aes(x = inches,
@@ -157,7 +158,7 @@ ggplot(fib_hydro, aes(x = lag1_prcp,
 Not very different.  
 
 
-## Entero by month  
+### Entero by month  
 
 ```{r}
 ggplot(fib_hydro,
@@ -177,7 +178,7 @@ ggplot(fib_hydro,
 
 No clear seasonal patterns in Enterococcus; as a reminder, all stations are included here, and patterns may emerge when we look only at the more land-influenced stations.  
 
-## Hydro load by month  
+### Hydro load by month  
 
 Only since 2009, to keep data frame size under control.  
 
@@ -205,7 +206,7 @@ ggplot(hydro_sub,
 
 Clear seasonality.  
 
-## Precip by month  
+### Precip by month  
 
 ```{r}
 ggplot(combnd,
@@ -226,7 +227,7 @@ ggplot(combnd,
 Again, clear seasonality.  
 
 
-## Inside bay vs. not  
+## "Non-bay" estuarine stations - Monthly relationships  
 
 The following stations are those that do not overlap with the `tbeptools::tbseg` layer - and so are not in the bay proper. For lack of a better term, I refer to these as "non-bay" stations. The graphics that follow are generally the same as those above, but on this subset of stations.    
 
@@ -418,6 +419,8 @@ ggplot(fib_nonbay, aes(x = lag1_prcp,
 
 ## A few individual sites  
 
+I wanted to take a deeper dive into some stations, and chose a few from the map that seemed like they were in interesting locations.  
+
 OrgID 21FLHILL_WQX
 Stations 22, 136, 036, 054
 
@@ -567,7 +570,7 @@ ggplot(fib_daily_long_nonbay, aes(x = total, y = val)) +
          col = "Bay Segment")
 ```
 
-### Calculate correlations  
+### Correlations  
 
 Spearman correlations  
 
@@ -727,7 +730,7 @@ knitr::kable(nonbay_stns3,
 
 ## ECDFs  
 
-Empirical cumulative distribution functions  
+Empirical cumulative distribution functions - to explore the general distribution of Enterococcus in wet vs. dry season, in a different way.   
 
 ### Freshwater  
 

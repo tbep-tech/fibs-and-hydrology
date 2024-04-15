@@ -137,7 +137,14 @@ ul.task-list li input[type="checkbox"] {
 <div id="quarto-sidebar-glass" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar,#quarto-sidebar-glass"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#general-takeaways-from-all-of-this-exploration" id="toc-general-takeaways-from-all-of-this-exploration" class="nav-link active" data-scroll-target="#general-takeaways-from-all-of-this-exploration">General takeaways from all of this exploration</a></li>
+  <li><a href="#recommendations-for-report-card-development" id="toc-recommendations-for-report-card-development" class="nav-link" data-scroll-target="#recommendations-for-report-card-development">Recommendations for report card development</a></li>
+  </ul>
+<div class="toc-actions"><div><i class="bi bi-github"></i></div><div class="action-links"><p><a href="https://github.com/tbep-tech/fibs-and-hydrology/blob/main/takeaways.qmd" class="toc-action">View source</a></p></div></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
@@ -159,9 +166,32 @@ ul.task-list li input[type="checkbox"] {
 
 </header>
 
-<p>General takeaways from all that exploration will go here.</p>
+<section id="general-takeaways-from-all-of-this-exploration" class="level2">
+<h2 class="anchored" data-anchor-id="general-takeaways-from-all-of-this-exploration">General takeaways from all of this exploration</h2>
+<ol type="1">
+<li><p>Different bay segments, with their different sized watersheds, have different relationships between precipitation and hydrologic load, Enterococcus concentrations, and relationships between Entero and precip.<br>
+</p></li>
+<li><p>Relationships between Entero and monthly, bay-segment-averaged precipitation and hydrologic loadings are not detectable in a practicable way. This is not the scale to use to really determine relationships.<br>
+</p></li>
+<li><p>When focusing on non-bay stations (vs.&nbsp;in-bay stations), a wedge shape in the scatter plots of Entero vs.&nbsp;daily-level precipitation at various time lags becomes discernible. Higher Entero concentrations tend to happen at higher precip amounts, but higher precip amounts do not necessarily lead to higher Entero. The exact shape varies by bay segment, wet vs.&nbsp;dry season, and month.</p></li>
+</ol>
+</section>
+<section id="recommendations-for-report-card-development" class="level2">
+<h2 class="anchored" data-anchor-id="recommendations-for-report-card-development">Recommendations for report card development</h2>
+<ol type="1">
+<li><p>Which sampling stations are included in report cards is an important consideration. If the goal of reporting is to track whether management actions in the watershed are impacting FIBs in the water, tracking stations in the bays will not be useful.<br>
+</p></li>
+<li><p>To account for hydrological inputs on FIB concentrations, using average monthly precipitation (or monthly hydrologic load) over entire bay segments is not appropriate. While monthly averages are fairly easy to get, “monthly” is not the temporal scale that stations respond to. Similarly, “entire bay segment” is not the spatial scale that stations respond to.<br>
+</p></li>
+<li><p>Daily precipitation averaged over each bay segment, even using various lag periods, is also too broad of a spatial scale to be useful.<br>
+</p></li>
+<li><p>A coarse way to include hydrology would be to separate indices by wet vs.&nbsp;dry season. The ECDF plots provide some indication that Enterococcus concentrations are more likely to be higher in the wet than dry season.<br>
+</p></li>
+<li><p>To incorporate more detailed information on hydrological inputs, averaging precipitation at a smaller scale than “bay segment” is warranted. Calculating those averages if the spatial area is defined for each station is not computationally difficult; the difficulty arises in choosing stations and defining the spatial areas over which to calculate precipitation. [Note that in a near-deadline meeting, we discussed this issue, and Ed has already provided shapefiles to address this.] There may need to be a bit more exploration of different time lags (e.g.&nbsp;precipitation amounts over 48 hours vs.&nbsp;72 hours before sampling) to determine the best lag for the selected stations.</p></li>
+</ol>
 
 
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
@@ -410,4 +440,4 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
 
 
 
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><div><i class="bi bi-github"></i></div><div class="action-links"><p><a href="https://github.com/tbep-tech/fibs-and-hydrology/blob/main/takeaways.qmd" class="toc-action">View source</a></p></div></div></div></div></footer></body></html>
+</body></html>

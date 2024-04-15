@@ -1,3 +1,21 @@
-# Takeaways {.unnumbered} 
+# Takeaways {.unnumbered}
 
-General takeaways from all that exploration will go here.  
+## General takeaways from all of this exploration
+
+1.  Different bay segments, with their different sized watersheds, have different relationships between precipitation and hydrologic load, Enterococcus concentrations, and relationships between Entero and precip.\
+
+2.  Relationships between Entero and monthly, bay-segment-averaged precipitation and hydrologic loadings are not detectable in a practicable way. This is not the scale to use to really determine relationships.\
+
+3.  When focusing on non-bay stations (vs. in-bay stations), a wedge shape in the scatter plots of Entero vs. daily-level precipitation at various time lags becomes discernible. Higher Entero concentrations tend to happen at higher precip amounts, but higher precip amounts do not necessarily lead to higher Entero. The exact shape varies by bay segment, wet vs. dry season, and month.
+
+## Recommendations for report card development
+
+1.  Which sampling stations are included in report cards is an important consideration. If the goal of reporting is to track whether management actions in the watershed are impacting FIBs in the water, tracking stations in the bays will not be useful.\
+
+2.  To account for hydrological inputs on FIB concentrations, using average monthly precipitation (or monthly hydrologic load) over entire bay segments is not appropriate. While monthly averages are fairly easy to get, "monthly" is not the temporal scale that stations respond to. Similarly, "entire bay segment" is not the spatial scale that stations respond to.\
+
+3.  Daily precipitation averaged over each bay segment, even using various lag periods, is also too broad of a spatial scale to be useful.\
+
+4.  A coarse way to include hydrology would be to separate indices by wet vs. dry season. The ECDF plots provide some indication that Enterococcus concentrations are more likely to be higher in the wet than dry season.\
+
+5.  To incorporate more detailed information on hydrological inputs, averaging precipitation at a smaller scale than "bay segment" is warranted. Calculating those averages if the spatial area is defined for each station is not computationally difficult; the difficulty arises in choosing stations and defining the spatial areas over which to calculate precipitation. \[Note that in a near-deadline meeting, we discussed this issue, and Ed has already provided shapefiles to address this.\] There may need to be a bit more exploration of different time lags (e.g. precipitation amounts over 48 hours vs. 72 hours before sampling) to determine the best lag for the selected stations.
